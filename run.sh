@@ -2,6 +2,14 @@
 # ngrok_ssh_tunnel.sh
 set -euo pipefail
 
+
+curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc \
+  | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null \
+  && echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" \
+  | sudo tee /etc/apt/sources.list.d/ngrok.list \
+  && sudo apt update \
+  && sudo apt install ngrok
+
 PORT="${1:-22}"
 
 # Read token from env var (recommended) or file
@@ -14,6 +22,7 @@ if ! command -v ngrok >/dev/null 2>&1; then
   echo "ERROR: ngrok is not installed. Install it first: https://ngrok.com/download"
   exit 1
 fi
+
 
 # Configure token (writes to ~/.config/ngrok/ngrok.yml or equivalent)
 ngrok config add-authtoken "${NGROK_AUTHTOKEN}" >/dev/null
