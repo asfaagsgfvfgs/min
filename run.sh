@@ -1,88 +1,180 @@
-#!/bin/bash
 
-# ==========================================
-# CONFIGURATION SECTION
-# ==========================================
+                #!/bin/bash
+# SSH Tunnel Script
+# Usage: ./ssh_tunnel.sh [options]
 
-# The computer you are connecting TO (the gateway)
-REMOTE_USER="myuser"
-REMOTE_HOST="server-ip-address-or-name.com"
-REMOTE_PORT="22" # Usually 22, check your provider
+# Configuration - Edit these values
+REMOTE_HOST="remote.server.com"
+REMOTE_USER="username"
+REMOTE_PORT="22"
+LOCAL_PORT="8080"
+REMOTE_SERVICE_PORT="80"
+SSH_KEY="~/.ssh/id_rsa"
 
-# The type of tunnel and ports
-# OPTIONS:
-# 1. DYNAMIC (-D): Creates a SOCKS5 proxy. Use this to browse the web 
-#    as if you were on the remote computer, or access multiple apps.
-# 2. LOCAL   (-L): Opens a specific port on your computer that connects 
-#    to a specific port on the remote computer.
-TUNNEL_MODE="DYNAMIC" 
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
 
-# SETTINGS FOR DYNAMIC TUNNEL (SOCKS Proxy)
-LOCAL_SOCKS_PORT="9090"
+# Function to display usage
+usage() {
+    echo -e "${YELLOW}Usage:${NC} $0 [options]"
+    echo ""
+    echo "Options:"
+    echo "  -h, --host     Remote host (default: $REMOTE_HOST)"
+    echo "  -u, --user     Remote username (default: $REMOTE_USER)"
+    echo "  -p, --port     Remote SSH port (default: $REMOTE_PORT)"
+    echo "  -l, --local    Local port (default: $LOCAL_PORT)"
+    echo "  -r, --rport    Remote service port (default: $REMOTE_SERVICE_PORT)"
+    echo "  -k, --key      SSH key file (default: $SSH_KEY)"
+    echo "  -t, --type     Tunnel type: local, remote, dynamic (default: local)"
+    echo "  -b, --bg       Run in background"
+    echo "  -c, --close    Close existing tunnel"
+    echo "  --help         Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  $0 -h myserver.com -u john -l 8080 -r 80"
+    echo "  $0 --type dynamic -l 9090  (SOCKS proxy)"
+    exit 1
+}
 
-# SETTINGS FOR LOCAL PORT FORWARD
-# Example: Access a web app (localhost:80) on the remote server 
-# via your local port 8000
-LOCAL_FORWARD_PORT="8000"
-REMOTE_DESTINATION="localhost:80" 
+# Function to check if port is in use
+check_port() {
+    local port=$1
+    if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1 ; then
+        return 0
+    else
+        return 1
+    fi
+}
 
-# SSH CONTROL
-# -o options keep the connection alive and reduce disconnects
-SSH_OPTIONS="-o ServerAliveInterval=60 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes"
+# Function to close existing tunnel
+close_tunnel() {
+    echo -e "${YELLOW}Closing existing tunnel on port $LOCAL_PORT...${NC}"
+    PID=$(lsof -ti :$LOCAL_PORT)
+    if [ -n "$PID" ]; then
+        kill $PID
+        echo -e "${GREEN}Tunnel closed successfully!${NC}"
+    else
+        echo -e "${YELLOW}No tunnel found on port $LOCAL_PORT${NC}"
+    fi
+    exit 0
+}
 
-# AUTHENTICATION
-# Uncomment the line below if your key is in a specific location, 
-# otherwise SSH uses ~/.ssh/id_rsa by default
-# SSH_KEY="/path/to/your/private/key"
+# Parse command line arguments
+RUN_BACKGROUND=false
+TUNNEL_TYPE="local"
 
-# ==========================================
-# SCRIPT LOGIC (usually no need to edit below)
-# ==========================================
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--host)
+            REMOTE_HOST="$2"
+            shift 2
+            ;;
+        -u|--user)
+            REMOTE_USER="$2"
+            shift 2
+            ;;
+        -p|--port)
+            REMOTE_PORT="$2"
+            shift 2
+            ;;
+        -l|--local)
+            LOCAL_PORT="$2"
+            shift 2
+            ;;
+        -r|--rport)
+            REMOTE_SERVICE_PORT="$2"
+            shift 2
+            ;;
+        -k|--key)
+            SSH_KEY="$2"
+            shift 2
+            ;;
+        -t|--type)
+            TUNNEL_TYPE="$2"
+            shift 2
+            ;;
+        -b|--bg)
+            RUN_BACKGROUND=true
+            shift
+            ;;
+        -c|--close)
+            close_tunnel
+            ;;
+        --help)
+            usage
+            ;;
+        *)
+            echo -e "${RED}Unknown option: $1${NC}"
+            usage
+            ;;
+    esac
+done
 
-# Check if autossh is installed
-if ! command -v autossh &> /dev/null; then
-    echo "Error: 'autossh' is not installed."
-    echo "Install it via: brew install autossh (Mac) or apt install autossh (Linux)"
+# Build SSH tunnel command based on type
+case $TUNNEL_TYPE in
+    local)
+        # Local port forwarding: localhost:LOCAL_PORT -> remote:REMOTE_SERVICE_PORT
+        SSH_CMD="ssh -i $SSH_KEY -p $REMOTE_PORT -L $LOCAL_PORT:localhost:$REMOTE_SERVICE_PORT $REMOTE_USER@$REMOTE_HOST"
+        DESCRIPTION="Local tunnel: localhost:$LOCAL_PORT → $REMOTE_HOST:$REMOTE_SERVICE_PORT"
+        ;;
+    remote)
+        # Remote port forwarding: remote:REMOTE_PORT -> localhost:LOCAL_PORT
+        SSH_CMD="ssh -i $SSH_KEY -p $REMOTE_PORT -R $REMOTE_PORT:localhost:$LOCAL_PORT $REMOTE_USER@$REMOTE_HOST"
+        DESCRIPTION="Remote tunnel: $REMOTE_HOST:$REMOTE_PORT → localhost:$LOCAL_PORT"
+        ;;
+    dynamic)
+        # Dynamic port forwarding (SOCKS proxy)
+        SSH_CMD="ssh -i $SSH_KEY -p $REMOTE_PORT -D $LOCAL_PORT $REMOTE_USER@$REMOTE_HOST"
+        DESCRIPTION="Dynamic tunnel (SOCKS): localhost:$LOCAL_PORT"
+        ;;
+    *)
+        echo -e "${RED}Invalid tunnel type: $TUNNEL_TYPE${NC}"
+        usage
+        ;;
+esac
+
+# Display tunnel information
+echo -e "${GREEN}========================================${NC}"
+echo -e "${GREEN}🔐 SSH Tunnel Configuration${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo -e "${YELLOW}Type:${NC} $TUNNEL_TYPE"
+echo -e "${YELLOW}Description:${NC} $DESCRIPTION"
+echo -e "${YELLOW}Remote Host:${NC} $REMOTE_USER@$REMOTE_HOST:$REMOTE_PORT"
+echo -e "${YELLOW}SSH Key:${NC} $SSH_KEY"
+echo -e "${GREEN}========================================${NC}"
+
+# Check if port is already in use
+if check_port $LOCAL_PORT; then
+    echo -e "${RED}Error: Port $LOCAL_PORT is already in use!${NC}"
+    echo -e "${YELLOW}Hint: Use -c to close existing tunnel or -l to specify different port${NC}"
     exit 1
 fi
 
-echo "Starting SSH Tunnel..."
-
-# Construct the SSH command dynamically based on mode
-if [ "$TUNNEL_MODE" == "DYNAMIC" ]; then
-    echo "Mode: Dynamic SOCKS Proxy"
-    echo "Connect your browser/app to localhost:$LOCAL_SOCKS_PORT"
-    
-    # We use two ports for autossh: the tunnel port (local) and the monitor port
-    # The monitor port must be distinct from the tunnel port
-    AUTOSSH_MONITORPORT=$((LOCAL_SOCKS_PORT + 1))
-    
-    autossh -M $AUTOSSH_MONITORPORT \
-        -N -f -i "$SSH_KEY" \
-        -D $LOCAL_SOCKS_PORT \
-        -p $REMOTE_PORT $SSH_OPTIONS \
-        $REMOTE_USER@$REMOTE_HOST
-
-elif [ "$TUNNEL_MODE" == "LOCAL" ]; then
-    echo "Mode: Local Port Forward"
-    echo "Access remote service via localhost:$LOCAL_FORWARD_PORT"
-    
-    AUTOSSH_MONITORPORT=$((LOCAL_FORWARD_PORT + 1))
-
-    autossh -M $AUTOSSH_MONITORPORT \
-        -N -f -i "$SSH_KEY" \
-        -L $LOCAL_FORWARD_PORT:$REMOTE_DESTINATION \
-        -p $REMOTE_PORT $SSH_OPTIONS \
-        $REMOTE_USER@$REMOTE_HOST
-
+# Add background flag if requested
+if [ "$RUN_BACKGROUND" = true ]; then
+    SSH_CMD="$SSH_CMD -f -N"
+    echo -e "${YELLOW}Running in background...${NC}"
 else
-    echo "Invalid TUNNEL_MODE in configuration. Use 'DYNAMIC' or 'LOCAL'"
-    exit 1
+    echo -e "${YELLOW}Press Ctrl+C to close the tunnel${NC}"
 fi
 
-# Capture the exit code
+# Add keep-alive options
+SSH_CMD="$SSH_CMD -o ServerAliveInterval=60 -o ServerAliveCountMax=3"
+
+# Execute SSH tunnel
+echo -e "${GREEN}🚀 Starting tunnel...${NC}"
+eval $SSH_CMD
+
 if [ $? -eq 0 ]; then
-    echo "Tunnel started successfully in the background."
+    if [ "$RUN_BACKGROUND" = true ]; then
+        echo -e "${GREEN}✅ Tunnel established in background!${NC}"
+        echo -e "${YELLOW}To close: $0 -c${NC}"
+    fi
 else
-    echo "Failed to start tunnel. Check your network/credentials."
+    echo -e "${RED}❌ Failed to establish tunnel${NC}"
+    exit 1
 fi
+            
