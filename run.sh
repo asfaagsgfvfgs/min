@@ -2,8 +2,7 @@
 # ngrok_ssh_tunnel.sh
 set -euo pipefail
 
-su && apt-get install -y wget && wget https://bin.ngrok.com/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz
-sudo tar -xvzf ~/Downloads/ngrok-v3-stable-linux-amd64.tgz -C /usr/local/bin
+su && apt-get install -y wget && wget https://bin.ngrok.com/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz && tar -xvzf ~/Downloads/ngrok-v3-stable-linux-amd64.tgz -C /usr/local/bin
 
 PORT="${1:-22}"
 
